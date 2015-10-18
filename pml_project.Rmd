@@ -1,0 +1,123 @@
+---
+title: "Coursera PML Project"
+author: "Joshua"
+date: "16 October 2015"
+output: html_document
+---
+#Project Introduction
+
+###Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+###Goal
+In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to create a prediction classification model to determine how the exercises were performed, the "classe" variable in the training set. 
+The five ways, as described in the study, were "exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes." More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+  
+###Data
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+#Data processing
+First we load the relevant libraries and both training and test datasets treating empty values as NA. We compare the training and test datasets to ensure that the column names are the same. Following which we drop the columns which contain large amounts of NAs and the first 7 columns which intuitively are not accelerometer measurements.
+
+```{r,message=FALSE,warning=FALSE}
+library(caret)
+library(randomForest)
+library(knitr)
+```
+
+```{r,echo=FALSE}
+#library(AppliedPredictiveModeling)
+#library(rpart)
+#library(rpart.plot)
+#library(RColorBrewer)
+#library(rattle)
+
+#Structure of analysis:
+#Question
+#Input Data
+#Features
+#Algorithm
+#Parameters
+#Evaluation
+```
+
+```{r}
+set.seed(5967)
+#trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train <- "pml-training.csv"
+test <- "pml-testing.csv"
+#training <- read.csv(trainUrl, na.strings=c("NA","#DIV/0!",""))
+#testing <- read.csv(testUrl, na.strings=c("NA","#DIV/0!",""))
+training <- read.csv(train, na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(test, na.strings=c("NA","#DIV/0!",""))
+
+train_colnames <- names(training)
+test_colnames <- names(testing)
+all.equal(train_colnames[1:159], test_colnames[1:159])
+
+#Drop the first 7 columns and NA data as they are unnecessary
+training <- training[, colSums(is.na(training)) == 0] 
+testing <- testing[, colSums(is.na(testing)) == 0] 
+training <- training[,8:length(names(training))]
+testing <- testing[,8:length(names(testing))]
+```
+
+Then we investigate the variability between the remaining variables 
+```{r}
+nsv <- nearZeroVar(training, saveMetrics=TRUE)
+nsv
+```
+As all of the near zero variance variables are false we do not need to eliminate any covariates.
+  
+Next we partition the training data into a training and a validation set, this is so that we can check the out of sample error for the model before applying it to the actual test data.
+
+```{r, echo=FALSE}
+dataSplit <- createDataPartition(training$classe, p=0.80, list=F)
+trainData <- training[dataSplit,]
+validationData <- training[-dataSplit,]
+```
+
+#Algorithm
+We will create a prediction model using Random Forest as it is one of the most accurate methods and robust to correlated covariates & outliers in general. 
+This blog nicely summarizes why random forest is one of the top performing algorithms https://medium.com/rants-on-machine-learning/the-unreasonable-effectiveness-of-random-forests-f33c3ce28883
+
+```{r}
+# random forest with cross validation, no preprocessing
+tc <- trainControl(method="cv", 7)
+#modelFit <- train(classe ~ ., data=trainData, method="rf", trControl=tc, ntree=250)
+modelFit<-readRDS("modelFit.rds")
+# took ~15 mins on home computer
+modelFit
+```
+
+Then we test the model on the validation data set
+```{r}
+predictRf1 <- predict(modelFit, validationData)
+confusionMatrix(validationData$classe, predictRf1)
+```
+Without preprocessing the model fitted has an out of sample error of 0.001, which seems really good.
+
+#Generate answers for testData
+Generating the predictions for the testing data based on the model.
+```{r}
+answers<-predict(modelFit,testing)
+```
+
+Function to generate files for submission
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
+
+The predictions were all correct. Some further questions I would have liked to work on would be comparing a glm to random forest, and comparing preprocessing to the non preprocessed model, but perhaps that's something for after the assignment :)
